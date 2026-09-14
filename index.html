@@ -5610,7 +5610,7 @@
                     (A[p] || []).forEach(t => {
                         const cur = map.get(String(t.id));
                         if (!cur) { map.set(String(t.id), t); return; }
-                        map.set(String(t.id), Object.assign({}, cur, t, { done: !!(cur.done || t.done) }));
+                        map.set(String(t.id), Object.assign({}, cur, t, { done: (typeof _localEdited === 'object' && _localEdited instanceof Set && _localEdited.has(String(t.id))) ? !!t.done : !!(cur.done || t.done) }));
                     });
                     day[p] = Array.from(map.values());
                 });
@@ -5861,7 +5861,9 @@
         }
         function toggleTask(ds, period, index) {
             const tasks = getDayTasks(ds);
-            tasks[period][index].done = !tasks[period][index].done;
+            const task = tasks[period][index];
+            task.done = !task.done;
+            if (typeof _localEdited === 'object' && _localEdited instanceof Set) _localEdited.add(String(task.id));
             renderAll();
             // checkTodayCheckin 内部统一 saveData() 一次（任务状态 + 打卡数据），避免重复写盘
             checkTodayCheckin(ds);
@@ -6372,6 +6374,7 @@ const supabaseClient = (window.supabase && window.supabase.createClient) ? windo
 let _syncTimer = null;
 let _syncing = false;   // 防止合并触发的重入同步
 let _userModified = false;
+let _localEdited = new Set(); // 本会话用户主动勾选/取消过的任务 id，合并时以本地状态为准
 let _cloudLoaded = false; // 首次云端加载完成前禁止上传，避免本地初始化数据覆盖云端勾选状态
 
 function setSyncStatus(text, mode) {
