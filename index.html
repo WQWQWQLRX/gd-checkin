@@ -6325,6 +6325,7 @@
             document.getElementById('resetData').onclick = () => {
                 if (confirm('确定要重置所有打卡数据吗？此操作不可恢复！')) {
                     taskData = {}; checkinData = {};
+                    if (typeof _resetPending === 'boolean') _resetPending = true;
                     saveData(); renderAll();
                     alert('数据已重置');
                 }
@@ -6375,6 +6376,22 @@ let _syncTimer = null;
 let _syncing = false;   // 防止合并触发的重入同步
 let _userModified = false;
 let _localEdited = new Set(); // 本会话用户主动勾选/取消过的任务 id，合并时以本地状态为准
+let _resetPending = false; // 用户刚重置过数据：合并阶段跳过云端、直接覆盖，避免重置被云端旧数据复活
+// 打卡记录合并：manual 优先，其次本地优先（本地是最新操作），并集保留两边记录，避免多设备互相覆盖丢失
+function mergeCheckin(local, cloud) {
+    const out = {};
+    const dates = new Set(Object.keys(local || {}).concat(Object.keys(cloud || {})));
+    dates.forEach(ds => {
+        const l = (local || {})[ds];
+        const c = (cloud || {})[ds];
+        if (l === undefined || l === null) out[ds] = c;
+        else if (c === undefined || c === null) out[ds] = l;
+        else if (typeof l === 'object' && l.manual) out[ds] = l;
+        else if (typeof c === 'object' && c.manual) out[ds] = c;
+        else out[ds] = l;
+    });
+    return out;
+}
 let _cloudLoaded = false; // 首次云端加载完成前禁止上传，避免本地初始化数据覆盖云端勾选状态
 
 function setSyncStatus(text, mode) {
@@ -6399,11 +6416,16 @@ async function saveToCloud() {
         // 多设备：先拉云端逐任务合并（done 取或），再回写，避免这台设备的旧数据覆盖另一台的勾选
         try {
             const { data: cur } = await supabaseClient.from('checkins').select('data').eq('id', 1).maybeSingle();
-            if (cur && cur.data && cur.data.v === DATA_VERSION && cur.data.tasks) {
-                const merged = pruneTaskData(mergeTaskData(taskData, cur.data.tasks));
-                if (JSON.stringify(merged) !== JSON.stringify(taskData)) {
-                    taskData = merged;
-                    if (typeof renderAll === 'function') renderAll();
+            if (cur && cur.data && cur.data.v === DATA_VERSION) {
+                if (!_resetPending && cur.data.tasks) {
+                    const merged = pruneTaskData(mergeTaskData(taskData, cur.data.tasks));
+                    if (JSON.stringify(merged) !== JSON.stringify(taskData)) {
+                        taskData = merged;
+                        if (typeof renderAll === 'function') renderAll();
+                    }
+                }
+                if (!_resetPending && cur.data.checkin && typeof cur.data.checkin === 'object') {
+                    checkinData = mergeCheckin(checkinData, cur.data.checkin);
                 }
             }
         } catch (e) { /* 合并失败就直接写本机数据，至少不丢操作 */ }
@@ -6418,6 +6440,7 @@ async function saveToCloud() {
                 .insert({ id: 1, data: payload, updated_at: new Date().toISOString() });
             if (insErr) throw insErr;
         }
+        _resetPending = false;
         setSyncStatus('云端已同步', 'ok');
     } catch (e) {
         console.warn('saveToCloud failed:', e);
@@ -6436,6 +6459,13 @@ async function loadFromCloud() {
         if (error) throw error;
         if (data && data.data && typeof data.data === 'object') {
             const d = data.data;
+            // 用户刚重置过数据：忽略云端，直接放开上传覆盖，避免重置被云端旧数据复活
+            if (_resetPending) {
+                setSyncStatus('已重置，等待覆盖云端', 'sync');
+                _cloudLoaded = true;
+                scheduleSync();
+                return;
+            }
             // 用户已在本地操作过（勾选/添加任务等），跳过覆盖 tasks/checkin 并保留本地数据，
             // 避免云端旧数据覆盖用户操作；本地数据稍后会经 saveToCloud 同步上云。
             if (_userModified) {
@@ -6453,7 +6483,7 @@ async function loadFromCloud() {
                 return;
             }
             if (d.tasks && typeof d.tasks === 'object') taskData = pruneTaskData(mergeTaskData(taskData, d.tasks));
-            if (d.checkin && typeof d.checkin === 'object') checkinData = d.checkin;
+            if (d.checkin && typeof d.checkin === 'object') checkinData = mergeCheckin(checkinData, d.checkin);
             try {
                 localStorage.setItem('gd2027_tasks_v5', JSON.stringify(taskData));
                 localStorage.setItem('gd2027_checkin_v5', JSON.stringify(checkinData));
