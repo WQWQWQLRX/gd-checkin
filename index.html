@@ -6366,8 +6366,8 @@
 /* 豆包版打卡网页 - Supabase 云同步模块
    数据格式：云端 checkins 表 id=1 的 data jsonb 字段 = {"tasks": {...taskData}, "checkin": {...checkinData}}
    策略：页面先读 localStorage 秒开渲染，再异步 loadFromCloud() 拉云端覆盖；任何保存走 saveToCloud()（防抖 300ms upsert）；失败静默降级本地。 */
-const SUPABASE_URL = 'https://xxclvxenjqjvmcawmwdd.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4Y2x2eGVuanFqdm1jYXdtd2RkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1ODI5NzgsImV4cCI6MjEwMzE1ODk3OH0.rJUQ3ybLLT4tXhSjsAG7xaQS3b5GAFuezAtUnOHkJe4';
+const SUPABASE_URL = 'https://dkqguchjocojpipebtei.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_TxlDK7buiKCzICVZ5D380Q_eZlWe9kI';
 const supabaseClient = (window.supabase && window.supabase.createClient) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 let _syncTimer = null;
 let _syncing = false;   // 防止合并触发的重入同步
